@@ -1,0 +1,5 @@
+{
+  "name": "Lumina Reader AI",
+  "description": "Um leitor de EPUB moderno e minimalista com inteligência artificial integrada para resumir e explicar o conteúdo dos livros. Carregue seus arquivos .epub e desfrute de uma experiência de leitura fluida.",
+  "requestFramePermissions": []
+}
