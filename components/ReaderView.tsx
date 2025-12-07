@@ -17,7 +17,9 @@ import {
   generateRecap,
   analyzeSelection,
   identifyCharacter,
+  detectBookGenre,
 } from '../services/geminiService'
+import { generateSpeech, BookGenre } from '../services/elevenLabsService'
 
 interface ReaderViewProps {
   bookData: ArrayBuffer
@@ -52,6 +54,7 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
   const [currentChapterLabel, setCurrentChapterLabel] = useState('')
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
   const [metadata, setMetadata] = useState<any>(null)
+  const [bookGenre, setBookGenre] = useState<BookGenre | null>(null)
 
   // UI State
   const [showUI, setShowUI] = useState(true)
@@ -90,6 +93,17 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
     error: null,
   })
   const [aiModalTitle, setAiModalTitle] = useState('Lumina AI Insights')
+
+  // Audio State
+  const [audioState, setAudioState] = useState<{
+    loading: boolean
+    url: string | null
+    error: string | null
+  }>({
+    loading: false,
+    url: null,
+    error: null,
+  })
 
   const [isCharacterCardOpen, setIsCharacterCardOpen] = useState(false)
   const [characterName, setCharacterName] = useState('')
@@ -301,11 +315,8 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
           'max-width': '100%', // Evita que imagens estourem a tela
           height: 'auto',
         },
-        '.TextodocorpoItlico1': { background: theme.bg },
 
-        // --- SUA CLASSE PERSONALIZADA AQUI ---
-        // Exemplo: Se quiser mudar a cor de uma classe chamada .destaque
-        // '.destaque': { 'background-color': 'yellow', 'color': 'black' },
+        '.TextodocorpoItlico1': { background: theme.bg },
       })
 
       rendition.themes.select(theme.name)
@@ -371,6 +382,9 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
     setAiModalTitle(action === 'explain' ? 'Explicação' : 'Resumo')
     setIsAIModalOpen(true)
     setAiState({ loading: true, content: null, error: null })
+    // Reset audio state when opening new modal
+    setAudioState({ loading: false, url: null, error: null })
+
     try {
       const result = await analyzeSelection(selection.text, action)
       setAiState({ loading: false, content: result, error: null })
@@ -387,6 +401,8 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
     setAiModalTitle('O que aconteceu até agora')
     setIsAIModalOpen(true)
     setAiState({ loading: true, content: null, error: null })
+    setAudioState({ loading: false, url: null, error: null })
+
     try {
       if (!selection.cfiRange) throw new Error()
       const spineItem = book?.spine.get(selection.cfiRange)
@@ -417,6 +433,35 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
         loading: false,
         content: null,
         error: 'Erro ao gerar resumo.',
+      })
+    }
+  }
+
+  const handleGenerateAudio = async () => {
+    if (!aiState.content) return
+
+    setAudioState({ loading: true, url: null, error: null })
+    try {
+      // 1. Detect Genre if not already detected
+      let genre = bookGenre
+      if (!genre) {
+        const snippet = selection.text || aiState.content // Use selection or the summary itself for genre detection
+        genre = await detectBookGenre(
+          metadata?.title || '',
+          metadata?.creator || '',
+          snippet,
+        )
+        setBookGenre(genre)
+      }
+
+      // 2. Generate Audio via ElevenLabs
+      const url = await generateSpeech(aiState.content, genre)
+      setAudioState({ loading: false, url, error: null })
+    } catch (e: any) {
+      setAudioState({
+        loading: false,
+        url: null,
+        error: e.message || 'Erro ao gerar áudio',
       })
     }
   }
@@ -502,6 +547,8 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
         onClose={() => setIsAIModalOpen(false)}
         aiState={aiState}
         title={aiModalTitle}
+        onGenerateAudio={handleGenerateAudio}
+        audioState={audioState}
       />
       <CharacterCard
         isOpen={isCharacterCardOpen}
