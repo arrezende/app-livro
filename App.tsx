@@ -27,8 +27,6 @@ import {
   deleteBookFromStorage,
   getBookById,
 } from './services/storage'
-import Header from './components/Header'
-import LibraryEmpty from './components/LibraryEmpty'
 
 interface SelectionState {
   visible: boolean
@@ -51,10 +49,41 @@ export default function App() {
   const [toc, setToc] = useState<TocItem[]>([])
   const [currentChapterLabel, setCurrentChapterLabel] = useState('')
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
-  const [theme, setTheme] = useState<Theme>(themes[0])
-  const [fontSize, setFontSize] = useState(100)
+
+  // Persisted Preferences State
+  const [theme, setTheme] = useState<Theme>(() => {
+    try {
+      const savedThemeName = localStorage.getItem('lumina_theme')
+      if (savedThemeName) {
+        const foundTheme = themes.find((t) => t.name === savedThemeName)
+        if (foundTheme) return foundTheme
+      }
+    } catch (e) {
+      console.warn('Error loading theme preference', e)
+    }
+    return themes[0]
+  })
+
+  const [fontSize, setFontSize] = useState<number>(() => {
+    try {
+      const savedSize = localStorage.getItem('lumina_font_size')
+      if (savedSize) {
+        const parsed = parseInt(savedSize, 10)
+        if (!isNaN(parsed) && parsed >= 50 && parsed <= 300) {
+          return parsed
+        }
+      }
+    } catch (e) {
+      console.warn('Error loading font size preference', e)
+    }
+    return 100
+  })
+
   const [metadata, setMetadata] = useState<any>(null)
   const [currentBookId, setCurrentBookId] = useState<string | null>(null)
+
+  // UI State
+  const [showUI, setShowUI] = useState(true)
 
   // Library State
   const [recentBooks, setRecentBooks] = useState<StoredBook[]>([])
@@ -95,12 +124,21 @@ export default function App() {
   const viewerRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const isLocationRestored = useRef(false)
-  const saveTimeout = useRef<NodeJS.Timeout | null>(null)
+  const saveTimeout = useRef<any>(null)
 
   // Load Library on Mount
   useEffect(() => {
     refreshLibrary()
   }, [])
+
+  // Persist Preferences whenever they change
+  useEffect(() => {
+    localStorage.setItem('lumina_theme', theme.name)
+  }, [theme])
+
+  useEffect(() => {
+    localStorage.setItem('lumina_font_size', fontSize.toString())
+  }, [fontSize])
 
   const refreshLibrary = async () => {
     try {
@@ -130,11 +168,6 @@ export default function App() {
         const newBook = ePub(bookData)
         setBook(newBook as unknown as BookType)
         setIsReady(false)
-        // We temporarily store the initialCfi in a property we can access in the useEffect
-        // Or we rely on the DB fetch inside useEffect if we want.
-        // For simplicity, let's pass it via a ref or rely on the DB inside the effect.
-        // Actually, the cleanest way: pass it to state, but 'book' dependency triggers the effect.
-        // Let's rely on the ID check in the effect.
       } catch (error) {
         console.error('Error creating ePub:', error)
         setToast({ message: 'Erro ao abrir o livro.', type: 'error' })
@@ -146,7 +179,10 @@ export default function App() {
   const handleFileUpload = async (
     event: React.ChangeEvent<HTMLInputElement>,
   ) => {
-    const file = event.target.files?.[0]
+    const files = event.target.files
+    if (!files || files.length === 0) return
+
+    const file = files[0]
     if (file) {
       setIsLoadingLibrary(true) // Show loading state
       const reader = new FileReader()
@@ -237,8 +273,8 @@ export default function App() {
     element.innerHTML = ''
 
     const newRendition = book.renderTo(element, {
-      width: '90%',
-      height: '90%',
+      width: '100%',
+      height: '100%',
       flow: 'paginated',
       manager: 'default',
     })
@@ -247,6 +283,7 @@ export default function App() {
 
     // Reset state flags
     isLocationRestored.current = false
+    setShowUI(true)
 
     let isMounted = true
 
@@ -310,8 +347,63 @@ export default function App() {
       })
       .catch((err) => console.error('Navigation error:', err))
 
+    // Register Hooks for Swipe Gestures and Context Menu suppression
+    // @ts-ignore
+    if (book.rendition && book.rendition.hooks) {
+      // @ts-ignore
+      book.rendition.hooks.content.register((contents) => {
+        const body = contents.document.body
+
+        // Disable default context menu (native copy/search bubble fallback)
+        contents.document.addEventListener('contextmenu', (e: Event) => {
+          e.preventDefault()
+        })
+
+        // Swipe Logic Variables
+        let touchStartX = 0
+        let touchStartY = 0
+        const minSwipeDistance = 50
+
+        // Touch Start
+        body.addEventListener(
+          'touchstart',
+          (e: TouchEvent) => {
+            touchStartX = e.changedTouches[0].screenX
+            touchStartY = e.changedTouches[0].screenY
+          },
+          { passive: true },
+        )
+
+        // Touch End
+        body.addEventListener(
+          'touchend',
+          (e: TouchEvent) => {
+            const touchEndX = e.changedTouches[0].screenX
+            const touchEndY = e.changedTouches[0].screenY
+
+            const diffX = touchStartX - touchEndX
+            const diffY = touchStartY - touchEndY
+
+            // Ignore if vertical scrolling is dominant
+            if (Math.abs(diffY) > Math.abs(diffX)) return
+
+            if (Math.abs(diffX) > minSwipeDistance) {
+              if (diffX > 0) {
+                newRendition.next()
+              } else {
+                newRendition.prev()
+              }
+            }
+          },
+          { passive: true },
+        )
+      })
+    }
+
     // Listeners
     newRendition.on('selected', (cfiRange: string, contents: any) => {
+      setShowUI(true) // SHOW UI ON SELECTION
+
       const range = newRendition.getRange(cfiRange)
       if (!range) return
 
@@ -344,7 +436,15 @@ export default function App() {
     })
 
     newRendition.on('click', () => {
+      // Only hide if we aren't selecting text (handled by the 'selected' event check logic elsewhere,
+      // but here we toggle. The 'selected' event fires after click usually, so we need careful timing)
+
+      // Note: 'selected' fires, then 'click' might fire depending on browser.
+      // We rely on the setSelection logic's timeout to override this if a selection occurred.
       setSelection((prev) => ({ ...prev, visible: false }))
+
+      // Toggle UI Visibility on click
+      setShowUI((prev) => !prev)
     })
 
     newRendition.on('relocated', (location: any) => {
@@ -364,12 +464,6 @@ export default function App() {
 
       saveTimeout.current = setTimeout(async () => {
         if (currentBookId && location.start && location.start.cfi) {
-          // Calculate percentage
-          // Note: location.start.percentage is sometimes available, usually explicitly calculated via locations
-          // For simplicity in this robust version without generating all locations (slow), we use the location object provided
-          // However, epub.js 'locations' need to be generated for accurate %.
-          // We'll trust what we have or default to 0.
-
           // Try to get rough percentage
           let percent = 0
           // @ts-ignore
@@ -405,7 +499,11 @@ export default function App() {
   useEffect(() => {
     if (rendition) {
       rendition.themes.register(theme.name, {
-        body: { color: theme.fg, background: theme.bg },
+        body: {
+          color: theme.fg,
+          background: theme.bg,
+          '-webkit-tap-highlight-color': 'transparent',
+        }, // Fix mobile highlight
         '::selection': { background: 'rgba(255, 255, 0, 0.3)' },
         p: { color: theme.fg },
         h1: { color: theme.fg },
@@ -463,12 +561,13 @@ export default function App() {
 
   // AI Actions
   const handleSelectionAction = async (
-    action: 'explain' | 'summarize' | 'translate' | 'identify',
+    action: 'explain' | 'summarize' | 'recap' | 'identify',
   ) => {
     if (!selection.text) return
 
     setSelection((prev) => ({ ...prev, visible: false }))
 
+    // ACTION: Identify Character
     if (action === 'identify') {
       const name = selection.text.trim()
       if (name.split(' ').length > 5) {
@@ -484,6 +583,15 @@ export default function App() {
       setCharacterAiState({ loading: true, content: null, error: null })
 
       try {
+        if (selection.cfiRange) {
+          // Validate cfiRange before potentially using it
+          const spineItem = book?.spine.get(selection.cfiRange)
+          if (!spineItem)
+            console.warn(
+              'Character selection context warning: Spine item not found',
+            )
+        }
+
         const bookTitle = metadata?.title || 'livro desconhecido'
         const author = metadata?.creator || 'autor desconhecido'
         const result = await identifyCharacter(name, bookTitle, author)
@@ -498,15 +606,19 @@ export default function App() {
       return
     }
 
+    // ACTION: Recap (Smart History)
+    if (action === 'recap') {
+      handleSmartRecap()
+      return
+    }
+
+    // ACTION: Explain or Summarize
     switch (action) {
       case 'explain':
         setAiModalTitle('Explicação do Texto')
         break
       case 'summarize':
         setAiModalTitle('Resumo do Trecho')
-        break
-      case 'translate':
-        setAiModalTitle('Tradução')
         break
     }
 
@@ -541,6 +653,8 @@ export default function App() {
     setAiState({ loading: true, content: null, error: null })
 
     try {
+      if (!selection.cfiRange) throw new Error('Seleção inválida.')
+
       const selectedSpineItem = book.spine.get(selection.cfiRange)
       if (!selectedSpineItem)
         throw new Error('Não foi possível localizar o capítulo da seleção.')
@@ -602,17 +716,8 @@ export default function App() {
   // --------------------------------------------------------------------------------
   if (!book) {
     return (
-      <div className="min-h-screen bg-white transition-colors duration-500 overflow-auto custom-scrollbar">
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors duration-500 overflow-auto custom-scrollbar">
         {/* Navbar */}
-        {/* <Header /> */}
-
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept=".epub, application/epub+zip"
-          className="hidden"
-          onChange={handleFileUpload}
-        />
         <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 sticky top-0 z-30 shadow-sm">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -624,6 +729,7 @@ export default function App() {
               </h1>
             </div>
 
+            {/* Upload Small Button */}
             <div
               onClick={() => fileInputRef.current?.click()}
               className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-full cursor-pointer transition-colors shadow-md hover:shadow-lg text-sm font-medium"
@@ -649,7 +755,6 @@ export default function App() {
             </div>
           ) : recentBooks.length === 0 ? (
             // Empty State
-            // <LibraryEmpty onClick={() => fileInputRef.current?.click()} />]
             <div className="flex flex-col items-center justify-center py-20 animate-in fade-in duration-500">
               <div className="bg-white dark:bg-gray-800 p-12 rounded-3xl shadow-xl max-w-lg w-full text-center space-y-8 border border-gray-100 dark:border-gray-700">
                 <div className="relative w-24 h-24 mx-auto">
@@ -676,31 +781,6 @@ export default function App() {
               </div>
             </div>
           ) : (
-            // <div className="flex flex-col items-center justify-center py-20 animate-in fade-in duration-500">
-            //   <div className="bg-white dark:bg-gray-800 p-12 rounded-3xl shadow-xl max-w-lg w-full text-center space-y-8 border border-gray-100 dark:border-gray-700">
-            //     <div className="relative w-24 h-24 mx-auto">
-            //       <div className="absolute inset-0 bg-blue-600 rounded-2xl transform rotate-6 opacity-20"></div>
-            //       <div className="absolute inset-0 bg-blue-600 rounded-2xl flex items-center justify-center shadow-lg transform rotate-3">
-            //         <Icons.BookOpen className="text-white w-12 h-12" />
-            //       </div>
-            //     </div>
-            //     <div>
-            //       <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
-            //         Sua biblioteca está vazia
-            //       </h2>
-            //       <p className="text-gray-500 dark:text-gray-400">
-            //         Carregue seu primeiro livro para começar a usar a
-            //         inteligência artificial na sua leitura.
-            //       </p>
-            //     </div>
-            //     <button
-            //       onClick={() => fileInputRef.current?.click()}
-            //       className="w-full py-3 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-xl text-blue-600 dark:text-blue-400 font-semibold transition-colors"
-            //     >
-            //       Selecionar arquivo no dispositivo
-            //     </button>
-            //   </div>
-            // </div>
             <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-500">
               <div className="flex items-center justify-between">
                 <h2 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
@@ -793,10 +873,10 @@ export default function App() {
     )
   }
 
-  // Render Reader (Same as before)
+  // Render Reader with 100dvh for mobile support
   return (
     <div
-      className="h-screen w-screen overflow-hidden flex flex-col transition-colors duration-500"
+      className="h-[100dvh] w-screen overflow-hidden flex flex-col transition-colors duration-500"
       style={{ backgroundColor: theme.bg }}
     >
       <Sidebar
@@ -823,39 +903,29 @@ export default function App() {
         onClose={() => setSelection((prev) => ({ ...prev, visible: false }))}
       />
 
-      {/* Header */}
-      <div className="relative top-0 left-0 right-0 p-4 z-40 flex justify-between pointer-events-none">
-        <div className="pointer-events-auto">
-          {/* Back Button */}
-          <button
-            onClick={() => {
-              setBook(null)
-              setRendition(null)
-              setIsReady(false)
-              refreshLibrary()
-              setCurrentBookId(null)
-            }}
-            className="p-2 rounded-full bg-black/5 dark:bg-white/10 hover:bg-black/10 dark:hover:bg-white/20 text-gray-600 dark:text-gray-300 transition-colors backdrop-blur-md"
-            title="Voltar para Biblioteca"
-          >
-            <Icons.ChevronLeft size={20} />
-          </button>
-        </div>
-        {/* HEADER LEITURA DO LIVRO */}
-        <div
-          className={`shadow-sm hidden text-sm font-medium px-4 py-1.5 rounded-full backdrop-blur-md transition-colors duration-300 max-w-md truncate ${
-            theme.name === 'dark'
-              ? 'bg-gray-800/80 text-gray-200 border border-gray-700'
-              : 'bg-white/80 text-gray-700 border border-gray-200'
-          }`}
+      {/* Header - Minimalist (Back button only) */}
+      <div
+        className={`absolute top-0 left-0 p-4 z-40 transition-transform duration-300 ${
+          showUI ? 'translate-y-0' : '-translate-y-full'
+        }`}
+      >
+        <button
+          onClick={() => {
+            setBook(null)
+            setRendition(null)
+            setIsReady(false)
+            refreshLibrary()
+            setCurrentBookId(null)
+          }}
+          className="p-2 rounded-full bg-black/5 dark:bg-white/10 hover:bg-black/10 dark:hover:bg-white/20 text-gray-600 dark:text-gray-300 transition-colors backdrop-blur-md"
+          title="Voltar para Biblioteca"
         >
-          {metadata ? metadata.title : 'Carregando livro...'}
-        </div>
-        <div className="pointer-events-auto">{/* Right spacer or tools */}</div>
+          <Icons.ChevronLeft size={20} />
+        </button>
       </div>
 
       {/* Main Viewer Area */}
-      <div className="flex-relative w-full h-screen flex items-center justify-center overflow-hidden">
+      <div className="flex-1 relative w-full h-full flex items-center justify-center overflow-hidden">
         <div
           ref={viewerRef}
           className="w-full h-full"
@@ -896,6 +966,7 @@ export default function App() {
         currentTheme={theme}
         fontSize={fontSize}
         currentChapterLabel={currentChapterLabel}
+        showUI={showUI}
       />
 
       <AIModal

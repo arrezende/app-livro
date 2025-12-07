@@ -12,6 +12,7 @@ interface ControlsProps {
   currentTheme: Theme
   fontSize: number
   currentChapterLabel: string
+  showUI: boolean
 }
 
 export const themes: Theme[] = [
@@ -30,12 +31,22 @@ export const Controls: React.FC<ControlsProps> = ({
   currentTheme,
   fontSize,
   currentChapterLabel,
+  showUI,
 }) => {
   const [showSettings, setShowSettings] = React.useState(false)
 
+  // Close settings if UI is hidden
+  React.useEffect(() => {
+    if (!showUI) {
+      setShowSettings(false)
+    }
+  }, [showUI])
+
   return (
     <div
-      className={`fixed bottom-0 left-0 right-0 p-4 border-t flex items-center justify-between transition-colors duration-300 z-50`}
+      className={`fixed bottom-0 left-0 right-0 p-4 border-t flex items-center justify-between transition-transform duration-300 z-50 ${
+        showUI ? 'translate-y-0' : 'translate-y-full'
+      }`}
       style={{
         backgroundColor: currentTheme.bg,
         color: currentTheme.fg,
@@ -43,7 +54,7 @@ export const Controls: React.FC<ControlsProps> = ({
       }}
     >
       {/* Settings Panel */}
-      {showSettings && (
+      {showSettings && showUI && (
         <div
           className="absolute bottom-full right-4 mb-2 p-4 rounded-lg shadow-xl border w-64"
           style={{
