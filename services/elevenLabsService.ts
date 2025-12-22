@@ -12,7 +12,7 @@ export type BookGenre =
 const N8N_AUDIO_WEBHOOK_URL =
   process.env.N8N_AUDIO_WEBHOOK_URL ||
   process.env.N8N_WEBHOOK_URL ||
-  'https://n8n.arrezende.com.br/webhook-test/lumina-audio'
+  'https://n8n.arrezende.com.br/webhook/lumina-audio'
 
 export const generateSpeech = async (
   text: string,
