@@ -1,50 +1,35 @@
-const getGreetingMessage = () => {
-  const hour = new Date().getHours()
-  if (hour >= 5 && hour < 12) return 'Bom dia'
-  if (hour >= 12 && hour < 18) return 'Boa tarde'
-  return 'Boa noite'
-}
+import React from 'react'
+
 export default function Header() {
-  const greeting = getGreetingMessage()
+  const now = new Date()
+  const hour = now.getHours()
+
+  let message
+  message = hour < 12 ? 'Bom dia!' : hour < 18 ? 'Boa tarde!' : 'Boa noite!'
+
+  const [text, setText] = React.useState<string>(message)
+
+  React.useEffect(() => {
+    const t = setTimeout(() => setText('kuaa'), 3000)
+    return () => clearTimeout(t)
+  }, [message])
   return (
-    <header className="p-4 bg-neutral-100 shadow-md">
-      <div className="max-w-7xl mx-auto flex items-center justify-between ">
+    <header className="bg-[#F3EFE9] border-b border-[#E6DCD0] border-gray-200 sticky top-0 z-30 shadow-sm transition-colors duration-300">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            width="24"
-            height="24"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            class="lucide lucide-circle-user-icon lucide-circle-user"
-          >
-            <circle cx="12" cy="12" r="10" />
-            <circle cx="12" cy="10" r="3" />
-            <path d="M7 20.662V19a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v1.662" />
-          </svg>
-          <span className="font-semibold text-xl">{greeting}, Alex</span>
+          <div className="">
+            <img
+              src="./assets/logo.png"
+              alt="Kuaa Logo"
+              width={60}
+              height={60}
+            />
+          </div>
+
+          <h1 className="text-xl font-bold text-gray-900 tracking-tight">
+            {text}
+          </h1>
         </div>
-        <button>
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            width="24"
-            height="24"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            class="lucide lucide-search-icon lucide-search"
-          >
-            <path d="m21 21-4.34-4.34" />
-            <circle cx="11" cy="11" r="8" />
-          </svg>
-        </button>
       </div>
     </header>
   )

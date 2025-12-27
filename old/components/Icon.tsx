@@ -1,14 +1,14 @@
-import React from 'react';
-import { 
-  BookOpen, 
-  ChevronLeft, 
-  ChevronRight, 
-  Settings, 
-  Moon, 
-  Sun, 
-  Type, 
-  List, 
-  Sparkles, 
+import React from 'react'
+import {
+  BookOpen,
+  ChevronLeft,
+  ChevronRight,
+  Settings,
+  Moon,
+  Sun,
+  Type,
+  List,
+  Sparkles,
   Upload,
   X,
   Loader2,
@@ -19,8 +19,9 @@ import {
   Search,
   Play,
   Pause,
-  Volume2
-} from 'lucide-react';
+  Volume2,
+  Plus,
+} from 'lucide-react'
 
 export const Icons = {
   BookOpen,
@@ -42,5 +43,6 @@ export const Icons = {
   Search,
   Play,
   Pause,
-  Volume2
-};
+  Volume2,
+  Plus,
+}

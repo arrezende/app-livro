@@ -1,0 +1,33 @@
+@import 'tailwindcss';
+
+@theme {
+  /* Cores Personalizadas */
+  --color-primary: #4ade80; /* Verde vibrante */
+  --color-forest-dark: #0f291e; /* Verde escuro profundo */
+  --color-forest-light: #dcfce7; /* Verde bem claro */
+
+  /* Fontes Personalizadas (Opcional, mas usado no layout) */
+  --font-serif: 'Merriweather', serif;
+
+  /* Animações (Opcional - recriando o fade-in-up usado no código) */
+  --animate-fade-in-up: fadeInUp 0.5s ease-out forwards;
+
+  @keyframes fadeInUp {
+    from {
+      opacity: 0;
+      transform: translate3d(0, 20px, 0);
+    }
+    to {
+      opacity: 1;
+      transform: translate3d(0, 0, 0);
+    }
+  }
+}
+/* Utilitário para esconder scrollbar */
+@utility hide-scrollbar {
+  &::-webkit-scrollbar {
+    display: none;
+  }
+  -ms-overflow-style: none; /* IE and Edge */
+  scrollbar-width: none; /* Firefox */
+}

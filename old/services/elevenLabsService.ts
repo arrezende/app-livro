@@ -1,55 +1,53 @@
+export type BookGenre =
+  | 'HORROR'
+  | 'ROMANCE'
+  | 'ADVENTURE'
+  | 'FANTASY'
+  | 'MYSTERY'
+  | 'NONFICTION'
+  | 'GENERAL'
 
-export type BookGenre = 'HORROR' | 'ROMANCE' | 'ADVENTURE' | 'FANTASY' | 'MYSTERY' | 'NONFICTION' | 'GENERAL';
+// URL do seu Webhook N8N para áudio.
+// Pode ser o mesmo do texto com action diferente, ou um webhook dedicado.
+const N8N_AUDIO_WEBHOOK_URL =
+  process.env.N8N_AUDIO_WEBHOOK_URL ||
+  process.env.N8N_WEBHOOK_URL ||
+  'https://n8n.arrezende.com.br/webhook/lumina-audio'
 
-const VOICE_MAP: Record<BookGenre, string> = {
-  // IDs de voz da ElevenLabs (Exemplos públicos)
-  // Nota: Em produção, ideal usar IDs verificados ou clonados
-  HORROR: 'Tj9l48J9AJbry5yCP5eW', // Antoni (Deep/Intense) - Improvisado como grave
-  ROMANCE: '21m00Tcm4TlvDq8ikWAM', // Rachel (Soft/Expressive)
-  ADVENTURE: 'D38z5RcWu1voky8WS1ja', // Fin (Energetic/Gaming) - Usando placeholder, ideal achar uma voz heróica
-  FANTASY: 'pNInz6obpgDQGcFmaJgB', // Adam (Deep narration)
-  MYSTERY: 'TxGEqnHWrfWFTfGW9XjX', // Josh (Deep/Serious)
-  NONFICTION: 'EXAVITQu4vr4xnSDxMaL', // Bella (Professional)
-  GENERAL: '21m00Tcm4TlvDq8ikWAM' // Rachel (Standard)
-};
-
-export const generateSpeech = async (text: string, genre: BookGenre): Promise<string> => {
-  const apiKey = process.env.ELEVEN_LABS_API_KEY;
-  if (!apiKey) {
-    throw new Error("ElevenLabs API Key não configurada.");
-  }
-
-  const voiceId = VOICE_MAP[genre] || VOICE_MAP.GENERAL;
-  const url = `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`;
+export const generateSpeech = async (
+  text: string,
+  genre: BookGenre,
+): Promise<string> => {
+  // No N8N, você deve configurar o nó "Respond to Webhook" para retornar Binary Data
+  // E configurar o nó ElevenLabs/OpenAI TTS para baixar o áudio.
 
   try {
-    const response = await fetch(url, {
+    const response = await fetch(N8N_AUDIO_WEBHOOK_URL, {
       method: 'POST',
       headers: {
-        'Accept': 'audio/mpeg',
         'Content-Type': 'application/json',
-        'xi-api-key': apiKey
       },
       body: JSON.stringify({
+        action: 'generate_audio',
         text: text,
-        model_id: "eleven_multilingual_v2",
-        voice_settings: {
-          stability: 0.5,
-          similarity_boost: 0.75,
-          // Ajustes sutis baseados no gênero poderiam ser feitos aqui também
-        }
-      })
-    });
+        genre: 'GENERAL',
+      }),
+    })
 
     if (!response.ok) {
-      const err = await response.json();
-      throw new Error(err.detail?.message || "Erro ao gerar áudio");
+      throw new Error('Erro ao gerar áudio via N8N')
     }
 
-    const blob = await response.blob();
-    return URL.createObjectURL(blob);
+    // O N8N deve retornar o arquivo binário (audio/mpeg)
+    const blob = await response.blob()
+
+    if (blob.size === 0) {
+      throw new Error('Áudio vazio recebido do N8N')
+    }
+
+    return URL.createObjectURL(blob)
   } catch (error) {
-    console.error("ElevenLabs Error:", error);
-    throw error;
+    console.error('N8N Audio Service Error:', error)
+    throw error
   }
-};
+}
