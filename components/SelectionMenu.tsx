@@ -21,6 +21,7 @@ export const SelectionMenu: React.FC<SelectionMenuProps> = ({
     if (visible && menuRef.current) {
       const rect = menuRef.current.getBoundingClientRect()
       const viewportWidth = window.innerWidth
+      console.log('Menu rect:', rect, 'Viewport width:', viewportWidth)
       const margin = 16 // Safe margin from edges
 
       let offset = 0
