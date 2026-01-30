@@ -333,6 +333,13 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
           background: theme.bg,
           '-webkit-tap-highlight-color': 'transparent',
           'font-family': 'Helvetica, Arial, sans-serif !important', // Exemplo: Forçar fonte
+          'padding-top': 'var(--rn-padding-top, 0px) !important',
+          'padding-bottom': 'var(--rn-padding-bottom, 0px) !important',
+        },
+        'body *': {
+          'margin-left': '0 !important',
+          'margin-right': '0 !important',
+          'background-color': 'transparent !important',
         },
         '::selection': { background: 'rgba(255, 255, 0, 0.3)' },
 
@@ -361,6 +368,60 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
       if (viewerRef.current) viewerRef.current.style.backgroundColor = theme.bg
     }
   }, [rendition, theme, fontSize])
+
+  // Receive padding values from external app (postMessage)
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      try {
+        let raw = event.data
+        // Some platforms wrap data inside another `data` prop
+        if (raw && typeof raw === 'object' && raw.data) raw = raw.data
+
+        const payload = typeof raw === 'string' ? JSON.parse(raw) : raw
+        if (!payload || payload.type !== 'RN_SET_PADDINGS') return
+
+        const { paddingTop, paddingBottom } = payload.payload || {}
+        const targetSelector =
+          '#root > div > div.flex-1.relative.w-full.h-full.flex.items-center.justify-center.overflow-hidden'
+        const target = document.querySelector(
+          targetSelector,
+        ) as HTMLElement | null
+
+        if (typeof paddingTop === 'number') {
+          document.documentElement.style.setProperty(
+            '--rn-padding-top',
+            `${paddingTop}px`,
+          )
+          if (target) {
+            target.style.setProperty('--rn-padding-top', `${paddingTop}px`)
+            target.style.paddingTop = `${paddingTop}px`
+          } else if (document && document.body) {
+            document.body.style.paddingTop = `${paddingTop}px`
+          }
+        }
+        if (typeof paddingBottom === 'number') {
+          document.documentElement.style.setProperty(
+            '--rn-padding-bottom',
+            `${paddingBottom}px`,
+          )
+          if (target) {
+            target.style.setProperty(
+              '--rn-padding-bottom',
+              `${paddingBottom}px`,
+            )
+            target.style.paddingBottom = `${paddingBottom}px`
+          } else if (document && document.body) {
+            document.body.style.paddingBottom = `${paddingBottom}px`
+          }
+        }
+      } catch (e) {
+        // ignore parse errors
+      }
+    }
+
+    window.addEventListener('message', handleMessage)
+    return () => window.removeEventListener('message', handleMessage)
+  }, [])
 
   // Navigation
   const handleNext = useCallback(() => rendition?.next(), [rendition])
